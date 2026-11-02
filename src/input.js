@@ -1,16 +1,15 @@
 // Keyboard plus touch/mouse on the game canvas. The first finger down steers by how far it
-// has been dragged sideways from where it landed, and any finger held down for a moment fires
-// the nitro (you keep steering while it burns).
+// has been dragged sideways from where it landed, and putting a second finger down fires the
+// nitro (you keep steering with the first while it burns).
 
 const BLOCKED = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']);
 const STEER_PX = 60; // drag this far sideways for full lock (at sensitivity 1)
-const BOOST_HOLD_MS = 250; // a touch held this long means nitro; a quick tap doesn't
 
 export class Input {
   constructor(canvas) {
     this.keys = new Set();
     this.steerPx = STEER_PX;
-    this.pointers = new Map(); // id -> { startX, x, y, t (when it went down) }
+    this.pointers = new Map(); // id -> { startX, x, y }
     this.steerId = null; // the pointer that steers
     this.onKeyDown = null;
     this.onPointerDown = null;
@@ -31,7 +30,7 @@ export class Input {
 
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
-      this.pointers.set(e.pointerId, { startX: e.clientX, x: e.clientX, y: e.clientY, t: e.timeStamp });
+      this.pointers.set(e.pointerId, { startX: e.clientX, x: e.clientX, y: e.clientY });
       if (this.steerId === null) this.steerId = e.pointerId;
       this.onPointerDown?.();
     });
@@ -77,8 +76,6 @@ export class Input {
 
   boost() {
     if (this.down('ArrowUp', 'KeyW', 'Space', 'ShiftLeft', 'ShiftRight')) return true;
-    const now = performance.now();
-    for (const p of this.pointers.values()) if (now - p.t >= BOOST_HOLD_MS) return true;
-    return false;
+    return this.pointers.size >= 2; // two fingers down
   }
 }

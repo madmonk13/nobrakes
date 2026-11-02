@@ -23,7 +23,7 @@ If you add a file under `src/`, add it to `SHELL` in `sw.js`, and bump `CACHE` o
 ## How it plays
 
 - **Steer:** drag left and right, or use ←/→ or A/D. Let go and the wheel straightens itself.
-- **Nitro:** keep a finger on the screen for a moment (you keep steering), or hold ↑, W, Space or Shift. Your top speed goes up by a third and every metre on nitro scores double, but the steering gets twitchier. A full tank lasts 5 seconds of burn; blue nitro bottles floating over the road (about one every 250 m) each refill half a tank, and only show up when the tank isn't full. The Nitro meter is under the HUD.
+- **Nitro:** hold two fingers on the screen (the first still steers), or hold ↑, W, Space or Shift. Your top speed goes up by a third and every metre on nitro scores double, but the steering gets twitchier. A full tank lasts 5 seconds of burn; blue nitro bottles floating over the road (about one every 250 m) each refill half a tank, and only show up when the tank isn't full. The Nitro meter is under the HUD.
 - **No brakes:** the car always pulls toward its cruising speed, which climbs from about 54 mph to about 125 mph over the first 7 km. ↓ just squeaks.
 - **Damage:** the Car meter starts full and every hit takes a bite out of it: how much depends on how fast you were closing on the thing you hit (in the direction you hit it) and how hard it is. Clipping a car you're passing or the guardrail costs a little; rear-ending a slow semi costs a lot; a concrete barrier head-on at speed can finish you in one go. Barrels, hay bales, crates and lost tyres you smash straight through; barriers, machinery, broken-down cars, rocks and traffic you bounce off, with the nose knocked aside so you can slide clear. Very hard landings dent it a little too. Chrome wrenches floating over the road (about one every 600 m) each repair 35 points, and only show up once the car is damaged. Below half it starts smoking, the paint dulls, the bumper sags and the spoiler works loose, and below a quarter the engine misfires.
 - **Conking out:** when the meter hits zero the run is over. If the last hit was a small one the engine just dies and the car rolls to a stop in a cloud of steam; if it was a big one, it's a full tumbling wreck. Driving off a collapsed bridge is always the end.
@@ -45,7 +45,7 @@ If you add a file under `src/`, add it to `SHELL` in `sw.js`, and bump `CACHE` o
 | `src/vehicles.js` | Low-poly traffic models (sedan, hatchback, SUV, pickup, van, box truck, bus, semi) and broken-down cars |
 | `src/car.js` | The player's car in six body styles, and its animation (steering, roll, nitro flames, visible damage, wreck tumble) |
 | `src/physics.js` | Car physics: gravity, the always-on engine and nitro tank, steering and grip, guardrails, collisions and damage |
-| `src/input.js` | Keyboard and touch: dragging steers, a finger held down fires the nitro |
+| `src/input.js` | Keyboard and touch: dragging steers, a second finger down fires the nitro |
 | `src/ui.js` | HUD (with the Car and Nitro meters), start hint and results |
 | `src/scenery.js` | Distant mountains, clouds, tyre smoke, damage smoke and steam, guardrail sparks |
 | `src/effects.js` | Coin pickup animation, crash debris, knocked cones |

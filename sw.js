@@ -3,7 +3,7 @@
 // falling back to the cached copy. Three.js and the font come from CDNs and are
 // cache-first, since those URLs never change.
 
-const CACHE = 'no-brakes-v12';
+const CACHE = 'no-brakes-v13';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png',
