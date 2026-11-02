@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>No Brakes</title>
+  <meta name="description" content="An endless eight-lane highway, a car with no brakes: weave through traffic, dodge roadworks and rock slides, and jump the collapsed bridges.">
+  <meta name="theme-color" content="#1d2230">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="No Brakes">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-run HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-row">
+      <div class="stat"><span class="label">Distance</span><span id="hud-dist" class="value">0 m</span></div>
+      <div class="stat"><span class="label">Speed</span><span id="hud-speed" class="value">0 mph</span></div>
+      <div class="stat"><span class="label">Score</span><span id="hud-score" class="value">0</span></div>
+    </div>
+    <div class="meters">
+      <div id="meter-health" class="meter"><span class="label">Car</span><div class="bar"><div class="fill"></div></div></div>
+      <div id="meter-nitro" class="meter"><span class="label">Nitro</span><div class="bar"><div class="fill"></div></div></div>
+    </div>
+    <div id="hud-best" class="hud-sub"></div>
+  </div>
+  <div id="hud-boost">NITRO</div>
+  <button id="btn-end" class="small-btn hidden">End run</button>
+
+  <!-- Start hint, shown during the countdown -->
+  <div id="hint" class="hidden">
+    <div class="hint-touch">Drag to steer · hold a finger down for nitro · grab blue bottles to refill it</div>
+    <div class="hint-keys">←/→ steer · hold ↑ or Space for nitro · grab blue bottles to refill it</div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Main menu -->
+  <div id="menu" class="overlay">
+    <div class="card">
+      <h1>No <span>Brakes</span></h1>
+      <p class="tag">Floor it. Dodge everything. Never stop.</p>
+      <div class="pill-row">
+        <div class="pill">🏆 Best <b id="menu-best">0</b></div>
+        <div class="pill">🏁 Furthest <b id="menu-dist">0 m</b></div>
+      </div>
+      <button id="btn-play" class="btn primary">Drive!</button>
+      <button id="btn-prefs" class="btn">⚙️ Settings</button>
+      <button id="btn-help" class="btn">❓ How to play</button>
+      <button id="btn-reset" class="link-btn">Reset scores</button>
+    </div>
+  </div>
+
+  <!-- How to play -->
+  <div id="help" class="overlay hidden">
+    <div class="card">
+      <h2>How to play</h2>
+      <div class="howto">
+        <div><b>Steer:</b> drag left/right, or ←/→ and A/D. Let go and the wheel straightens up.</div>
+        <div><b>Nitro:</b> keep a finger on the screen for a moment (you can still steer), or hold ↑, W, Space or Shift. Faster, and every metre on nitro scores double, but the steering gets twitchy. A full tank lasts 5 seconds; grab the blue nitro bottles on the road to top it up.</div>
+        <div><b>No brakes.</b> The car speeds up on its own and keeps getting faster the further you go. Pressing ↓ won't help.</div>
+        <div><b>Damage:</b> every hit costs health, more the faster and harder it is. Clipping a car you're overtaking or a barrel hurts a little; a concrete barrier head-on at full speed is the end. When the meter runs out the car conks out. Grab the wrenches on the road to patch it up.</div>
+        <div><b>Bridge out:</b> hit a ramp in front of a collapsed bridge to jump it. Miss the ramp and you're in the river.</div>
+        <div><b>Oil</b> makes you slide. <b>Turbo pads</b> fire you forward. Cones are fair game.</div>
+        <div><b>Score:</b> 1 per metre (2 on nitro), 25 per close call, 50 for flying over a car, 100 per bridge jumped, plus an airtime bonus.</div>
+        <div><b>Sound:</b> M or the speaker button to mute.</div>
+      </div>
+      <button id="btn-help-close" class="btn primary">Got it</button>
+    </div>
+  </div>
+
+  <!-- Preferences: the car's style and colours (chips and swatches are built in ui.js) -->
+  <div id="prefs" class="overlay prefs hidden">
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="pref" id="pref-style"><div class="pref-label">Car</div><div class="styles"></div></div>
+      <div class="pref" data-pref="body"><div class="pref-label">Paint</div><div class="swatches"></div></div>
+      <div class="pref" data-pref="stripe"><div class="pref-label">Stripes</div><div class="swatches"></div></div>
+      <div class="pref" data-pref="rims"><div class="pref-label">Rims</div><div class="swatches"></div></div>
+      <div class="pref pref-slider">
+        <div class="pref-label">Touch steering <span id="sens-value" class="pref-value"></span></div>
+        <input id="sens" type="range" aria-label="Touch steering sensitivity">
+        <div class="slider-ends"><span>Gentle</span><span>Sharp</span></div>
+      </div>
+      <button id="btn-prefs-done" class="btn primary">Done</button>
+      <button id="btn-prefs-reset" class="link-btn">Reset settings</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="overlay hidden">
+    <div class="card">
+      <h2 id="res-title">Run over</h2>
+      <p id="res-why" class="tag"></p>
+      <div id="res-best-badge" class="badge hidden">NEW BEST!</div>
+      <div class="big-dist" id="res-score">0</div>
+      <table class="res-table">
+        <tr><td>Distance</td><td id="res-dist">0 m</td></tr>
+        <tr id="res-coins-row"><td>Coins</td><td id="res-coins">0</td></tr>
+        <tr><td>Nitro bonus</td><td id="res-boost">0</td></tr>
+        <tr><td>Close calls</td><td id="res-close">0</td></tr>
+        <tr><td>Cones</td><td id="res-cones">0</td></tr>
+        <tr><td>Bridges jumped</td><td id="res-gaps">0</td></tr>
+        <tr><td>Airtime bonus</td><td id="res-air">0</td></tr>
+      </table>
+      <div class="pill-row"><div class="pill">🏆 Best <b id="res-best">0</b></div></div>
+      <button id="btn-again" class="btn primary">Drive again</button>
+      <button id="btn-menu" class="btn">Menu</button>
+    </div>
+  </div>
+
+  <!-- Paused -->
+  <div id="pause" class="overlay hidden">
+    <div class="card">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="btn primary">Resume</button>
+      <button id="btn-pause-end" class="btn">End run</button>
+    </div>
+  </div>
+
+  <button id="btn-mute" class="small-btn" aria-label="Mute sound">🔊</button>
+  <button id="btn-pause" class="small-btn hidden" aria-label="Pause">⏸</button>
+
+  <script type="module" src="src/main.js"></script>
+  <script>
+    // installable / offline support (service workers need https or localhost)
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
