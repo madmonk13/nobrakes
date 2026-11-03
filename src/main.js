@@ -20,7 +20,7 @@ const COUNT_STEP = 0.6; // seconds per countdown beat
 const CRASH_TIME = 2.4; // seconds to watch the wreck before the results
 const CONK_TIME = 3.2; // ...or to watch it roll to a stop after it conks out
 const NITRO_REFILL = 0.5; // share of a full tank in each refill bottle
-const REPAIR = 35; // health a wrench puts back
+const REPAIR = 25; // health a wrench puts back
 const COIN_POINTS = 10;
 const GAP_POINTS = 100;
 const CLOSE_POINTS = 25;
@@ -459,7 +459,7 @@ function startCrash() {
   if (kind === 'gap') sfx.fall();
   if (body.crashed.conked) {
     sfx.conk();
-    ui.toast('Conked out!');
+    ui.toast('Totaled!');
   } else {
     ui.toast(CRASH_TEXT[kind] || 'Wrecked!');
   }

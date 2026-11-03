@@ -236,7 +236,7 @@ export class UI {
 
   showResults(r, save) {
     this.save = save;
-    $('res-title').textContent = r.newBest ? 'New high score!' : r.conked ? 'Conked out!' : r.crash ? 'Wrecked!' : 'Run over';
+    $('res-title').textContent = r.newBest ? 'New high score!' : r.conked ? 'Totaled!' : r.crash ? 'Wrecked!' : 'Run over';
     const why = CRASH_LINES[r.crash]?.(r.detail) || '';
     // conked out: the last hit was only the final straw
     $('res-why').textContent = r.conked ? `${why} One knock too many, and the engine gave up.`.trim() : why;
