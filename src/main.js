@@ -624,13 +624,13 @@ function updateCamera(dt, snap = false) {
     if (mode === 'run' || mode === 'crash') {
       // (a car that conked out is followed as it rolls to a stop)
       const sp = body.speed;
-      back = 7 + Math.min(3, sp * 0.04);
-      up = 2.8 + Math.min(1.5, sp * 0.02);
-      ahead = 12;
-      lookDrop = 0.6;
+      back = 8.5 + Math.min(3, sp * 0.04);
+      up = 5.2 + Math.min(1.8, sp * 0.025);
+      ahead = 14;
+      lookDrop = 0;
     } else if (mode === 'ready') {
-      back = 7;
-      up = 2.8;
+      back = 8.5;
+      up = 5.2;
       ahead = 18;
       lookDrop = 0;
     } else {
