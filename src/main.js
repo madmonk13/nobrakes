@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Terrain, CHUNK_LEN, RAIL_X, animatePads, BIOME_NAMES } from './terrain.js';
 import { buildCar } from './car.js';
-import { setNight } from './nightlights.js';
+import { setNight, HEADLIGHT_BEAMS } from './nightlights.js';
 import { CarBody, CAR_HW, CAR_HL, MAX_HEALTH } from './physics.js';
 import { Traffic } from './traffic.js';
 import { Input } from './input.js';
@@ -146,6 +146,7 @@ let accumulator = 0;
 const prevPos = new THREE.Vector3();
 let prevFacing = 0;
 const view = { pos: new THREE.Vector3(), facing: 0 };
+let lit = false; // dark enough for the headlight beams to show
 let steerSmooth = 0;
 let fovKick = 0; // brief FOV punch when a turbo pad fires
 let shake = 0; // camera shake from hits, decays to 0
@@ -587,6 +588,7 @@ function updateCarVisual(dt, snap = false) {
   else car.group.quaternion.slerp(qTarget, 1 - Math.exp(-dt * 12));
 
   const active = mode === 'run' || mode === 'crash';
+  if (lit) car.setBeam(traffic.clearAhead(view.pos.x - 1.3, view.pos.x + 1.3, view.pos.z + 1.7, 40, traffic.player), dt);
   car.animate(dt, {
     steer: mode === 'run' ? steerSmooth : 0,
     airborne: active && body.airborne,
@@ -691,6 +693,7 @@ function updateCamera(dt, snap = false) {
   clouds.update(dt, camera);
   env.update(dt, camera, renderer);
   setNight(env.dark ?? 0);
+  lit = HEADLIGHT_BEAMS && (env.dark ?? 0) > 0.2;
 }
 
 // ---------- loop ----------
@@ -720,7 +723,7 @@ function frame(now) {
   if (mode === 'run' || mode === 'crash') updateRun(dt);
   // traffic keeps moving behind the menu too, so the highway feels alive
   traffic.setPlayer(body.pos, body.facing, body.speed);
-  traffic.update(dt, body.pos.z);
+  traffic.update(dt, body.pos.z, lit);
   for (const hit of traffic.hits) {
     hazardFx.crosser(hit, hit.vehicle.mesh.children[0]?.material?.color?.getHex?.() ?? 0xcccccc);
     if (Math.abs(hit.z - body.pos.z) < 150) sfx.thud(hit.ball.kind === 'bale' ? 'hay' : 'rock');

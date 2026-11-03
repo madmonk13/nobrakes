@@ -84,18 +84,35 @@ const SNOW_VERT = /* glsl */ `
   uniform float uScale;
   uniform float uIntensity;
   uniform vec2 uWind;
+  uniform vec3 uCamVel;
+  uniform float uAspect;
   attribute float aSeed;
   varying float vAlpha;
+  varying vec2 vDir;
+  varying float vLen;
   void main() {
     vec3 p = position;
-    p.y -= uTime * (16.0 + aSeed * 6.0);
+    float fall = 16.0 + aSeed * 6.0;
+    p.y -= uTime * fall;
     p.x += uTime * uWind.x;
     p.z += uTime * uWind.y;
     p = mod(p - uOrigin + uBox * 0.5, uBox) + uOrigin - uBox * 0.5;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
+    // a drop's streak lies along its motion relative to the car: straight down when parked,
+    // swept back and out from the road ahead at speed
+    vec3 rel = vec3(uWind.x, -fall, uWind.y) - uCamVel;
+    vec4 a = gl_Position;
+    vec4 b = projectionMatrix * (mv + modelViewMatrix * vec4(rel * 0.05, 0.0));
+    vec2 d = vec2(0.0, 1.0);
+    if (a.w > 0.01 && b.w > 0.01) {
+      vec2 s = (b.xy / b.w - a.xy / a.w) * vec2(uAspect, 1.0);
+      if (dot(s, s) > 1e-10) d = normalize(s);
+    }
+    vDir = d;
+    vLen = clamp(length(rel) / 22.0, 1.0, 2.5); // faster past, longer streak
     float dist = max(0.5, -mv.z);
-    gl_PointSize = max(1.0, uScale * (0.6 + aSeed * 0.8) / dist);
+    gl_PointSize = max(1.0, uScale * vLen * (0.6 + aSeed * 0.8) / dist);
     // aSeed doubles as the threshold, so light rain is just fewer drops
     vAlpha = step(aSeed, uIntensity) * clamp(1.6 - dist / (uBox.z * 0.5), 0.0, 1.0);
   }
@@ -103,11 +120,15 @@ const SNOW_VERT = /* glsl */ `
 const SNOW_FRAG = /* glsl */ `
   uniform vec3 uColor;
   varying float vAlpha;
+  varying vec2 vDir;
+  varying float vLen;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
-    float d = dot(c, c);
-    if (abs(c.x) > 0.035 || vAlpha <= 0.0) discard;
-    gl_FragColor = vec4(uColor, vAlpha * (1.0 - abs(c.y) * 2.0) * 0.55);
+    c.y = -c.y;
+    float along = dot(c, vDir);
+    float across = dot(c, vec2(-vDir.y, vDir.x));
+    if (abs(across) > 0.035 / vLen || vAlpha <= 0.0) discard;
+    gl_FragColor = vec4(uColor, vAlpha * (1.0 - abs(along) * 2.0) * 0.55);
   }
 `;
 
@@ -217,6 +238,8 @@ export class Environment {
         uOrigin: { value: new THREE.Vector3() },
         uBox: { value: SNOW_BOX.clone() },
         uScale: { value: 300 },
+        uCamVel: { value: new THREE.Vector3() },
+        uAspect: { value: 1 },
         uIntensity: { value: 0 },
         uWind: { value: new THREE.Vector2(1.2, -3.0) },
         uColor: { value: new THREE.Color(0xffffff) },
@@ -233,6 +256,10 @@ export class Environment {
     this.snowing = false;
     this.weatherTimer = 25; // first shower comes soon after starting
     this.snowTarget = 0;
+    this.camPrev = new THREE.Vector3();
+    this.camVel = new THREE.Vector3();
+    this.tmpC = new THREE.Vector3();
+    this.camSeen = false;
     this.snowLevel = 0;
     this.forced = null;
   }
@@ -333,6 +360,15 @@ export class Environment {
     lightFor(moonTheta, this.tmpB);
     this.lightDir.copy(this.tmpB).lerp(this.tmpA, w * w * (3 - 2 * w)).normalize();
 
+    // how the camera is moving, so the rain's streaks can lean into it (smoothed; a jump is not a speed)
+    if (this.camSeen && dt > 0) {
+      const v = this.tmpC.copy(camera.position).sub(this.camPrev).divideScalar(dt);
+      if (v.length() > 150) v.set(0, 0, 0);
+      this.camVel.lerp(v, 1 - Math.exp(-dt * 10));
+    }
+    this.camPrev.copy(camera.position);
+    this.camSeen = true;
+
     this.snow.visible = snow > 0.01;
     if (this.snow.visible) {
       const u = this.snowMat.uniforms;
@@ -342,6 +378,8 @@ export class Environment {
       camera.getWorldDirection(u.uOrigin.value);
       u.uOrigin.value.y = 0;
       u.uOrigin.value.multiplyScalar(14).add(camera.position);
+      u.uCamVel.value.copy(this.camVel);
+      u.uAspect.value = camera.aspect;
       // pixels per metre at 1 m: keeps flakes the same real size on any screen
       const h = renderer.domElement.height;
       u.uScale.value = (FLAKE_SIZE * h) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));

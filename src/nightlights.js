@@ -28,6 +28,8 @@ const glowMat = new THREE.MeshBasicMaterial({
 });
 glowMat.visible = false;
 
+export const HEADLIGHT_BEAMS = false; // the beams on the road ahead are switched off for now
+
 const POOL = new THREE.Color(0xfff0c8);
 const TAIL = new THREE.Color(0xff2a1e);
 const HEAD = new THREE.Color(0xfff6dc);
@@ -42,16 +44,25 @@ function quad(w, h, color, strength) {
   return g;
 }
 
-// One vehicle's glow, in its own frame (z forward, y up, ground at 0):
-// tails/heads: [[x, y, z], ...] lamp centres; pool: { z, len, w } on the road ahead.
-export function glowGeometry({ tails = [], heads = [], pool = null, size = 1 }) {
+// One vehicle's tail-light halos, in its own frame (z forward, y up, ground at 0):
+// tails/heads: [[x, y, z], ...] lamp centres.
+export function glowGeometry({ tails = [], heads = [], size = 1 }) {
   const parts = [];
   for (const [x, y, z] of tails) parts.push(quad(1.2 * size, 0.75 * size, TAIL, 1).rotateY(Math.PI).translate(x, y, z - 0.05));
   for (const [x, y, z] of heads) parts.push(quad(1.0 * size, 0.7 * size, HEAD, 0.8).translate(x, y, z + 0.05));
-  if (pool) {
-    // a long faint oval with a brighter one nearer the bonnet
-    parts.push(quad(pool.w, pool.len, POOL, 0.4).rotateX(-Math.PI / 2).translate(0, 0.06, pool.z + pool.len * 0.42));
-    parts.push(quad(pool.w * 0.75, pool.len * 0.5, POOL, 0.25).rotateX(-Math.PI / 2).translate(0, 0.07, pool.z + pool.len * 0.22));
+  return mergeGeometries(parts);
+}
+
+// The light the headlights throw on the road: one beam per lamp, side by side, each a long faint
+// oval with a brighter one nearer the bonnet. It runs forward from z = 0 so the mesh can be
+// scaled along z to stop short of whatever is in front (see beamMesh and setBeam).
+export function beamGeometry({ len, lampX }) {
+  const parts = [];
+  const w = lampX * 4.4;
+  for (const sx of [-1, 1]) {
+    const x = sx * lampX * 1.6;
+    parts.push(quad(w, len, POOL, 0.3).rotateX(-Math.PI / 2).translate(x, 0.06, len * 0.42));
+    parts.push(quad(w * 0.75, len * 0.5, POOL, 0.15).rotateX(-Math.PI / 2).translate(x, 0.07, len * 0.22));
   }
   return mergeGeometries(parts);
 }
@@ -60,6 +71,22 @@ export function glowMesh(geo) {
   const m = new THREE.Mesh(geo, glowMat);
   m.renderOrder = 2; // after the opaque world
   return m;
+}
+
+// A beam starting at z in its parent's frame; len is how far it reaches when nothing is in the way.
+export function beamMesh(geo, z, len) {
+  const m = glowMesh(geo);
+  m.position.z = z;
+  m.userData.len = len;
+  m.visible = HEADLIGHT_BEAMS;
+  return m;
+}
+
+// Shorten a beam to stop `free` metres ahead of where it starts (Infinity: nothing in the way). It
+// reaches a little past the thing it hits, so the light spills onto it, and eases in and out.
+export function setBeam(mesh, free, dt) {
+  const target = Math.min(1, Math.max(0.05, (free + 1) / mesh.userData.len));
+  mesh.scale.z += (target - mesh.scale.z) * Math.min(1, dt * 10);
 }
 
 // lamp materials that glow brighter after dark: { mat, day, night } emissive colours

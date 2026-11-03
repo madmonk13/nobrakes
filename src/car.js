@@ -10,11 +10,12 @@
 import * as THREE from 'three';
 import { DEFAULT_COLORS, DEFAULT_STYLE } from './save.js';
 import { tailMat, headMat, glassMat } from './vehicles.js';
-import { glowGeometry, glowMesh } from './nightlights.js';
+import { glowGeometry, glowMesh, beamGeometry, beamMesh, setBeam } from './nightlights.js';
 
 export const CAR_L = 4.4;
 export const CAR_W = 1.9;
 const PIVOT_Y = 0.6;
+const BEAM_LEN = 26; // how far the headlights reach on an empty road
 
 // Side profiles (z forward, y up), extruded across the car's width. `cabin` gives the indexes
 // of the cowl, the front and back of the roof, and the rear deck, which the windows are drawn
@@ -159,7 +160,7 @@ export function buildCar(styleName = DEFAULT_STYLE) {
   const flameCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false });
 
   // the parts of the current body style, rebuilt whenever the style changes
-  let style, bumper, wing, flames, wheels, wheelR;
+  let style, bumper, wing, beam, flames, wheels, wheelR;
   const geos = [];
 
   function build(name) {
@@ -207,13 +208,12 @@ export function buildCar(styleName = DEFAULT_STYLE) {
     }
     S.extras?.(add, mats);
 
-    // after dark: tail-light halos and a pool of headlight on the road ahead
-    const glowGeo = glowGeometry({
-      tails: [-1, 1].map((sx) => [sx * 0.62, ty, tz]),
-      pool: { z: bzF - 0.5, len: 26, w: 6 },
-    });
-    geos.push(glowGeo);
-    tilt.add(glowMesh(glowGeo));
+    // after dark: tail-light halos, and the beams of the headlights on the road ahead
+    const glowGeo = glowGeometry({ tails: [-1, 1].map((sx) => [sx * 0.62, ty, tz]) });
+    const beamGeo = beamGeometry({ len: BEAM_LEN, lampX: 0.62 });
+    geos.push(glowGeo, beamGeo);
+    beam = beamMesh(beamGeo, bzF - 0.5, BEAM_LEN);
+    tilt.add(glowMesh(glowGeo), beam);
 
     // boost flames out of the exhausts
     flames = [];
@@ -284,6 +284,10 @@ export function buildCar(styleName = DEFAULT_STYLE) {
       const d = shownDamage;
       shownDamage = -1;
       showDamage(Math.max(0, d));
+    },
+    // how far the road is clear ahead of the headlights: the beams stop short of what's in front
+    setBeam(free, dt) {
+      setBeam(beam, free, dt);
     },
     // a hit: the body shudders
     dent() {

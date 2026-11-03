@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { LANES, LANE_W, laneX, laneOf } from './terrain.js';
 import { CAR_L, CAR_W } from './car.js';
 import { buildVehicle, randomPaint } from './vehicles.js';
+import { setBeam } from './nightlights.js';
 
 const AHEAD = 450; // keep traffic out to here in front of the player...
 const BEHIND = 80; // ...and drop it once it's this far behind
@@ -23,6 +24,7 @@ const CHANGE_TIME = 1.8; // seconds to move over a lane
 const SIGNAL = 0.9; // seconds of indicator before moving over
 const EXIT_AHEAD = 200; // within this of a collapsed bridge, traffic leaves the road...
 const EXIT_SEEN = 150; // ...as long as it's at least this far ahead of the player
+const BEAM_SEEN = 200; // headlight beams are only kept up to date this far ahead of the player
 
 // Rough mix of traffic, heavier vehicles getting commoner further on.
 function pickType(r, z) {
@@ -40,6 +42,7 @@ export class Traffic {
     this.clock = 0;
     // the player's car as the traffic sees it, kept current by setPlayer()
     this.player = { x: 0, z: -1e9, speed: 0, lane: 0, target: 0, spec: { W: CAR_W, L: CAR_L } };
+    this.obstacles = []; // scratch list for clearAhead()
     this.hits = []; // { vehicle, ball, x, y, z, r, vel }: crossers that hit a vehicle, for main.js to show
   }
 
@@ -94,12 +97,12 @@ export class Traffic {
       const clear = !this.vehicles.some((o) => (o.lane === lane || o.target === lane) && Math.abs(o.z - z) < (o.spec.L + spec.L) / 2 + 14);
       if (!clear) continue;
       if (t.blockedAhead(x - 1.4, x + 1.4, z - spec.L / 2 - 8, z + spec.L / 2 + 30) !== Infinity) continue;
-      const { group, blinkers } = buildVehicle(type, randomPaint(Math.random, type));
+      const { group, blinkers, beam } = buildVehicle(type, randomPaint(Math.random, type));
       group.rotation.order = 'YXZ';
       this.scene.add(group);
       const desired = this.speedFor(type, pz);
       this.vehicles.push({
-        type, spec, mesh: group, blinkers, x, z, lane, target: lane, fromX: x, laneT: 1, signal: 0,
+        type, spec, mesh: group, blinkers, beam, x, z, lane, target: lane, fromX: x, laneT: 1, signal: 0,
         speed: desired, desired, wrecked: false, spin: 0, yaw: 0, passed: false, nextThink: Math.random(),
       });
       return true;
@@ -107,7 +110,8 @@ export class Traffic {
     return false;
   }
 
-  update(dt, pz) {
+  // lit: it's dark, so headlight beams show and should stop short of whatever is in front
+  update(dt, pz, lit = false) {
     this.clock += dt;
     const t = this.terrain;
     // spawn to keep the density up, and drop what's fallen behind
@@ -144,6 +148,10 @@ export class Traffic {
       v.mesh.position.set(v.x, h, v.z);
       v.mesh.rotation.set(-Math.atan(slope), v.yaw, 0);
       this.checkCrosser(v, h);
+      if (lit && v.beam && Math.abs(v.z - pz) < BEAM_SEEN) {
+        const hw = v.spec.W / 2 + 0.3, front = v.z + v.spec.L / 2 + 0.3;
+        setBeam(v.beam, this.clearAhead(v.x - hw, v.x + hw, front, v.beam.userData.len + 2, v), dt);
+      }
       const signalling = !v.wrecked && v.target !== v.lane;
       const dir = Math.sign(laneX(v.target) - laneX(v.lane));
       if (v.blinkers[0]) v.blinkers[0].visible = (v.hazards || (signalling && dir > 0)) && blink;
@@ -174,6 +182,26 @@ export class Traffic {
     v.speed *= heavy ? 0.7 : 0.45;
     v.drift = b.dir * b.speed * 0.5 * k;
     v.spin = (Math.random() < 0.5 ? -1 : 1) * (0.6 + 1.6 * k);
+  }
+
+  // How far ahead of z = front the road is clear between x0 and x1, up to max: the gap to the
+  // nearest vehicle (the player's car too) or roadside obstacle. Headlight beams stop there.
+  clearAhead(x0, x1, front, max, self = null) {
+    let free = max;
+    for (let i = 0; i <= this.vehicles.length; i++) {
+      const o = i < this.vehicles.length ? this.vehicles[i] : this.player;
+      if (o === self || o.z + o.spec.L / 2 < front) continue;
+      const hw = o.spec.W / 2;
+      if (o.x + hw < x0 || o.x - hw > x1) continue;
+      free = Math.min(free, Math.max(0, o.z - o.spec.L / 2 - front));
+    }
+    if (this.terrain) {
+      for (const o of this.terrain.obstaclesNear(front + max / 2, max / 2 + 8, this.obstacles)) {
+        if (o.z + o.hl < front || o.x + o.hw < x0 || o.x - o.hw > x1) continue;
+        free = Math.min(free, Math.max(0, o.z - o.hl - front));
+      }
+    }
+    return free;
   }
 
   // The nearest vehicle in front overlapping x-range [x0, x1], and the gap to it.

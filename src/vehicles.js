@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { glowGeometry, glowMesh, addLamp } from './nightlights.js';
+import { glowGeometry, glowMesh, beamGeometry, beamMesh, addLamp } from './nightlights.js';
 
 const SPECS = {
   sedan: { L: 4.5, W: 1.8, H: 1.48, wheelR: 0.33, axles: [1.4, -1.4], lower: [0.3, 0.92], cabin: { z0: -1.3, z1: 0.8, y1: 1.42, inset: 0.12 } },
@@ -53,6 +53,8 @@ const smokeMat = new THREE.MeshLambertMaterial({ color: 0xcfd2d6, transparent: t
 function box(w, h, d, x, y, z) {
   return new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 }
+
+const beamLen = (W) => Math.min(14, 8 + W * 2.5); // how far a vehicle's headlights reach
 
 // Parts for one type, grouped by material key: paint, glass, dark, cargo, tail, head, chrome.
 function partsFor(type) {
@@ -103,12 +105,12 @@ function partsFor(type) {
     const bl = sx > 0 ? P.blinkL : P.blinkR;
     bl.push(box(0.14, 0.14, 0.06, sx * (W / 2 - 0.06), tailY, rearZ - 0.03), box(0.12, 0.1, 0.06, sx * (W / 2 - 0.05), headY, frontZ + 0.03));
   }
-  // after dark: halos round the tail lights and a pool of headlight on the road ahead
+  // after dark: halos round the tail lights, and the beams of the headlights on the road ahead
   const glow = glowGeometry({
     tails: [-1, 1].map((sx) => [sx * (W / 2 - 0.28), tailY, rearZ]),
-    pool: { z: frontZ + 0.3, len: Math.min(14, 8 + W * 2.5), w: W * 2.3 },
     size: W > 2.2 ? 1.2 : 1,
   });
+  const beam = beamGeometry({ len: beamLen(W), lampX: W / 2 - 0.3 });
   const tw = type === 'semi' || type === 'boxtruck' || type === 'bus' ? 0.4 : 0.26;
   for (const z of s.axles) {
     for (const sx of [-1, 1]) {
@@ -116,7 +118,7 @@ function partsFor(type) {
       P.chrome.push(new THREE.CylinderGeometry(s.wheelR * 0.55, s.wheelR * 0.55, 0.02, 8).rotateZ(Math.PI / 2).translate(sx * (W / 2 + 0.03), s.wheelR, z));
     }
   }
-  const out = { glow };
+  const out = { glow, beam };
   for (const [k, list] of Object.entries(P)) if (list.length) out[k] = mergeGeometries(list.map((g) => g.toNonIndexed()));
   return out;
 }
@@ -148,16 +150,21 @@ function brokenExtras(s, paint) {
   return g;
 }
 
-// Returns { group, spec, blinkers: [left, right] }
+// Returns { group, spec, blinkers: [left, right], beam } (beam: the headlight mesh, if it has any)
 export function buildVehicle(type, paint, { broken = false } = {}) {
   let parts = cache.get(type);
   if (!parts) cache.set(type, (parts = partsFor(type)));
   const s = SPECS[type];
   const group = new THREE.Group();
   const blinkers = [];
+  let beam = null;
   for (const [k, geo] of Object.entries(parts)) {
     if (k === 'glow') {
       if (!broken) group.add(glowMesh(geo)); // a broken-down car's lights are off
+      continue;
+    }
+    if (k === 'beam') {
+      if (!broken) group.add((beam = beamMesh(geo, s.L / 2 + 0.3, beamLen(s.W))));
       continue;
     }
     const mesh = new THREE.Mesh(geo, k === 'paint' ? paintMat(paint) : MAT[k]);
@@ -169,6 +176,6 @@ export function buildVehicle(type, paint, { broken = false } = {}) {
     group.add(mesh);
   }
   if (broken) group.add(brokenExtras(s, paint));
-  return { group, spec: s, blinkers };
+  return { group, spec: s, blinkers, beam };
 }
 buildVehicle.spec = (type) => SPECS[type];
