@@ -4,6 +4,7 @@ import { buildCar } from './car.js';
 import { setNight, HEADLIGHT_BEAMS } from './nightlights.js';
 import { CarBody, CAR_HW, CAR_HL, MAX_HEALTH } from './physics.js';
 import { Traffic } from './traffic.js';
+import { steamPoint } from './vehicles.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
 import { loadSave, writeSave, clearSave, defaultSave } from './save.js';
@@ -21,6 +22,7 @@ const CRASH_TIME = 2.4; // seconds to watch the wreck before the results
 const CONK_TIME = 3.2; // ...or to watch it roll to a stop after it conks out
 const NITRO_REFILL = 0.5; // share of a full tank in each refill bottle
 const REPAIR = 25; // health a wrench puts back
+const PICKUP_REVEAL = 400; // a hidden wrench or nitro bottle reappears only when it's at least this far ahead
 const COIN_POINTS = 10;
 const GAP_POINTS = 100;
 const CLOSE_POINTS = 25;
@@ -495,6 +497,16 @@ function onLanding({ impact, airTime }) {
   }
 }
 
+// Broken-down cars on the road ahead steam like your own car does when the engine gives up.
+const nearObstacles = [];
+function ventBrokenCars(dt) {
+  for (const o of terrain.obstaclesNear(body.pos.z + 110, 140, nearObstacles)) {
+    if (o.type !== 'broken') continue;
+    const [y, z] = steamPoint(o.vehicle);
+    smoke.vent(o.x, terrain.profile(o.z) + y, o.z + z, dt);
+  }
+}
+
 function collectCoins(dt) {
   const ci = Math.floor(body.pos.z / CHUNK_LEN);
   const sx = body.pos.x, sy = body.pos.y + 0.8, sz = body.pos.z;
@@ -518,10 +530,11 @@ function collectCoins(dt) {
     for (const t of chunk.pickups) {
       if (t.collected) continue;
       const m = t.mesh.position;
-      // only show what you could use: no bottles on a full tank, no wrenches on a healthy car
+      // only show what you could use: no bottles on a full tank, no wrenches on a healthy car.
+      // One that's been hidden only comes back while it's still far off, so nothing pops into view
       const full = t.kind === 'nitro' ? body.nitro >= 1 : body.health >= MAX_HEALTH;
-      t.mesh.visible = !full;
-      if (full) continue;
+      t.mesh.visible = !full && (t.mesh.visible || m.z - sz > PICKUP_REVEAL);
+      if (!t.mesh.visible) continue;
       t.mesh.rotation.y += dt * 2;
       m.y = t.baseY + Math.sin(time * 3 + m.z) * 0.12;
       if (!near || body.crashed) continue;
@@ -730,6 +743,7 @@ function frame(now) {
   }
   traffic.hits.length = 0;
 
+  ventBrokenCars(dt);
   smoke.update(dt);
   sfx.update({
     running: mode === 'run' && !body.crashed, idle: mode === 'ready', speed: body.speed, contact: body.contact,

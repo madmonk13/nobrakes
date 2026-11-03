@@ -270,16 +270,26 @@ export class Smoke {
     }
   }
 
+  // One puff of the steam and smoke that pours out of a bonnet, carried along at (vx, vz).
+  steamPuff(x, y, z, vx, vz) {
+    this.puff(x + (Math.random() - 0.5) * 0.8, y, z + (Math.random() - 0.5) * 0.6,
+      vx * 0.8 + (Math.random() - 0.5) * 0.8, 1.2 + Math.random() * 1.4, vz * 0.8 + (Math.random() - 0.5) * 0.8,
+      1.4 + Math.random() * 0.8, Math.random() < 0.5 ? 0xe8e8e8 : 0x5a5a5e);
+  }
+
   // Steam and smoke pouring out of the bonnet once the engine has given up.
   steam(body, dt) {
     this.carry += dt * 24;
     const fx = Math.sin(body.facing), fz = Math.cos(body.facing);
     while (this.carry >= 1) {
       this.carry -= 1;
-      this.puff(body.pos.x + fx * 1.3 + (Math.random() - 0.5) * 0.8, body.pos.y + 0.9, body.pos.z + fz * 1.3 + (Math.random() - 0.5) * 0.6,
-        body.vel.x * 0.8 + (Math.random() - 0.5) * 0.8, 1.2 + Math.random() * 1.4, body.vel.z * 0.8 + (Math.random() - 0.5) * 0.8,
-        1.4 + Math.random() * 0.8, Math.random() < 0.5 ? 0xe8e8e8 : 0x5a5a5e);
+      this.steamPuff(body.pos.x + fx * 1.3, body.pos.y + 0.9, body.pos.z + fz * 1.3, body.vel.x, body.vel.z);
     }
+  }
+
+  // The same steam from a parked broken-down car (a bit thinner), at (x, y, z).
+  vent(x, y, z, dt) {
+    if (Math.random() < dt * 14) this.steamPuff(x, y, z, 0, 0);
   }
 
   sparks(hit, vel) {

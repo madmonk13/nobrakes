@@ -48,7 +48,6 @@ const cargoMat = new THREE.MeshLambertMaterial({ color: 0xeef0f2, flatShading: t
 export const hazardMat = new THREE.MeshLambertMaterial({ color: 0xffa83a, emissive: 0xff9a1a });
 // turn signals: shown or hidden per vehicle by the traffic
 export const blinkerMat = new THREE.MeshLambertMaterial({ color: 0xffb030, emissive: 0xff8a00 });
-const smokeMat = new THREE.MeshLambertMaterial({ color: 0xcfd2d6, transparent: true, opacity: 0.55, depthWrite: false });
 
 function box(w, h, d, x, y, z) {
   return new THREE.BoxGeometry(w, h, d).translate(x, y, z);
@@ -126,7 +125,13 @@ function partsFor(type) {
 const cache = new Map();
 const MAT = { glass: glassMat, dark: darkMat, cargo: cargoMat, tail: tailMat, head: headMat, chrome: chromeMat, blinkL: blinkerMat, blinkR: blinkerMat };
 
-// Raised bonnet and a wisp of steam for a broken-down car.
+// Where the steam rises from a broken-down car's raised bonnet: [height above the road, z from the middle].
+export function steamPoint(type) {
+  const s = SPECS[type];
+  return [(s.cabin ? s.lower[1] : s.tall ? s.tall.y0 + 0.8 : s.cab.y0 + 1.4) + 0.3, s.L / 2 - 0.6];
+}
+
+// Raised bonnet and hazard lights for a broken-down car (the steam is Smoke's job).
 function brokenExtras(s, paint) {
   const g = new THREE.Group();
   const top = s.cabin ? s.lower[1] : s.tall ? s.tall.y0 + 0.8 : s.cab.y0 + 1.4;
@@ -141,11 +146,6 @@ function brokenExtras(s, paint) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.08), hazardMat);
     h.position.set(sx * (s.W / 2 - 0.08), (s.cabin ? s.lower[1] : 1.0) - 0.1, sz * (s.L / 2 + 0.04));
     g.add(h);
-  }
-  for (let i = 0; i < 3; i++) {
-    const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + i * 0.15, 0), smokeMat);
-    puff.position.set((i - 1) * 0.2, top + 0.5 + i * 0.55, s.L / 2 - 0.6 - i * 0.2);
-    g.add(puff);
   }
   return g;
 }
