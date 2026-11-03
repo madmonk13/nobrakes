@@ -8,7 +8,8 @@
 // quietly leave.
 
 import * as THREE from 'three';
-import { LANES, LANE_W, laneX, laneOf } from './terrain.js';
+import { LANES, LANE_W, laneX, laneOf, RAIL_X } from './terrain.js';
+import { boxOverlap } from './physics.js';
 import { CAR_L, CAR_W } from './car.js';
 import { buildVehicle, randomPaint } from './vehicles.js';
 import { setBeam } from './nightlights.js';
@@ -24,6 +25,9 @@ const CHANGE_TIME = 1.8; // seconds to move over a lane
 const SIGNAL = 0.9; // seconds of indicator before moving over
 const EXIT_AHEAD = 200; // within this of a collapsed bridge, traffic leaves the road...
 const EXIT_SEEN = 150; // ...as long as it's at least this far ahead of the player
+const MASS = { sedan: 1, hatch: 0.9, suv: 1.2, pickup: 1.3, van: 1.4, boxtruck: 2.5, bus: 3.5, semi: 4 };
+const CRUNCH = 2.5; // closing faster than this (m/s) wrecks a vehicle that was still driving
+const SOLID = new Set(['barrier', 'machine', 'broken', 'rock', 'arrow']); // roadside things a wreck can't pass through
 const BEAM_SEEN = 200; // headlight beams are only kept up to date this far ahead of the player
 
 // Rough mix of traffic, heavier vehicles getting commoner further on.
@@ -42,7 +46,10 @@ export class Traffic {
     this.clock = 0;
     // the player's car as the traffic sees it, kept current by setPlayer()
     this.player = { x: 0, z: -1e9, speed: 0, lane: 0, target: 0, spec: { W: CAR_W, L: CAR_L } };
-    this.obstacles = []; // scratch list for clearAhead()
+    this.obstacles = []; // scratch list for clearAhead() and collide()
+    this.mtv = { nx: 0, nz: 0, depth: 0 };
+    this.boxA = { x: 0, z: 0, hw: 0, hl: 0, rot: 0 };
+    this.boxB = { x: 0, z: 0, hw: 0, hl: 0, rot: 0 };
     this.hits = []; // { vehicle, ball, x, y, z, r, vel }: crossers that hit a vehicle, for main.js to show
   }
 
@@ -131,6 +138,7 @@ export class Traffic {
     }
 
     const blink = Math.sin(this.clock * 9) > 0;
+    this.collide();
     for (const v of this.vehicles) {
       if (v.wrecked) {
         // knocked spinning by the player: slide to a stop
@@ -156,6 +164,97 @@ export class Traffic {
       const dir = Math.sign(laneX(v.target) - laneX(v.lane));
       if (v.blinkers[0]) v.blinkers[0].visible = (v.hazards || (signalling && dir > 0)) && blink;
       if (v.blinkers[1]) v.blinkers[1].visible = (v.hazards || (signalling && dir < 0)) && blink;
+    }
+  }
+
+  // Real contact between vehicles: they can't drive through each other, and wrecks can't slide
+  // through the guardrails or roadside obstacles either. Overlapping vehicles are pushed apart and
+  // swap momentum; one that was still driving and takes a hard knock is wrecked too.
+  collide() {
+    const vs = this.vehicles, A = this.boxA, B = this.boxB, m = this.mtv;
+    for (let i = 0; i < vs.length; i++) {
+      const a = vs[i];
+      this.boxOf(a, A);
+      for (let j = i + 1; j < vs.length; j++) {
+        const b = vs[j];
+        if (Math.abs(b.z - a.z) > 12) continue;
+        this.boxOf(b, B);
+        if (!boxOverlap(A, B, m)) continue;
+        // m.n points the way to push a (away from b)
+        const ma = MASS[a.type] ?? 1, mb = MASS[b.type] ?? 1;
+        const wa = mb / (ma + mb), wb = ma / (ma + mb);
+        a.x += m.nx * m.depth * wa;
+        a.z += m.nz * m.depth * wa;
+        b.x -= m.nx * m.depth * wb;
+        b.z -= m.nz * m.depth * wb;
+        this.boxOf(a, A);
+        const rx = (a.drift || 0) - (b.drift || 0), rz = a.speed - b.speed;
+        const vn = rx * m.nx + rz * m.nz; // negative: closing
+        if (vn >= 0) continue;
+        const j2 = (-(1 + 0.3) * vn) / (1 / ma + 1 / mb);
+        if (-vn > CRUNCH || a.wrecked || b.wrecked) {
+          this.wreck(a, -vn, ma / (ma + mb));
+          this.wreck(b, -vn, mb / (ma + mb));
+        }
+        if (a.wrecked) {
+          a.drift = (a.drift || 0) + (j2 / ma) * m.nx;
+          a.speed = Math.max(0, a.speed + (j2 / ma) * m.nz);
+        }
+        if (b.wrecked) {
+          b.drift = (b.drift || 0) - (j2 / mb) * m.nx;
+          b.speed = Math.max(0, b.speed - (j2 / mb) * m.nz);
+        }
+      }
+      if (a.wrecked) this.collideStatic(a);
+    }
+  }
+
+  boxOf(v, box) {
+    box.x = v.x;
+    box.z = v.z;
+    box.hw = v.spec.W / 2;
+    box.hl = v.spec.L / 2;
+    box.rot = v.yaw || 0;
+    return box;
+  }
+
+  // v is knocked out of action by something closing on it at `closing` m/s (lighter vehicles spin more)
+  wreck(v, closing, share = 0.5) {
+    if (!v.wrecked) {
+      v.wrecked = true;
+      v.hazards = true;
+      v.drift = v.drift || 0;
+      v.spin = (Math.random() < 0.5 ? -1 : 1) * Math.min(3, 0.3 + closing * 0.12 * (1 - share));
+      for (const b of v.blinkers) if (b) b.visible = false;
+    }
+  }
+
+  // A wreck against the guardrails and the roadside obstacles it's sliding into: it stops dead
+  // against them and bounces a little, rather than ploughing through.
+  collideStatic(v) {
+    const A = this.boxOf(v, this.boxA);
+    const ex = A.hw * Math.abs(Math.cos(A.rot)) + A.hl * Math.abs(Math.sin(A.rot));
+    const lim = RAIL_X - 0.15 - ex;
+    if (Math.abs(v.x) > lim) {
+      const side = Math.sign(v.x);
+      v.x = side * lim;
+      if ((v.drift || 0) * side > 0) v.drift = -v.drift * 0.25;
+      v.spin *= 0.5;
+    }
+    for (const o of this.terrain.obstaclesNear(v.z, 10, this.obstacles)) {
+      if (o.h <= 0 || !SOLID.has(o.kind)) continue;
+      const ob = o.tbox || (o.tbox = { x: o.x, z: o.z, hw: o.hw, hl: o.hl, rot: o.rot || 0 });
+      if (!boxOverlap(A, ob, this.mtv)) continue;
+      const m = this.mtv;
+      v.x += m.nx * m.depth;
+      v.z += m.nz * m.depth;
+      const vn = (v.drift || 0) * m.nx + v.speed * m.nz;
+      if (vn < 0) {
+        v.drift = (v.drift || 0) - 1.25 * vn * m.nx;
+        v.speed = Math.max(0, v.speed - 1.25 * vn * m.nz);
+        v.spin *= 0.6;
+      }
+      this.boxOf(v, A);
     }
   }
 

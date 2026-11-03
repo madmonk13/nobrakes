@@ -36,7 +36,7 @@ const CRUISE_RAMP = 7000; // ...over this many metres
 const CRASH_TEXT = {
   traffic: 'Smash!', broken: 'Smash!', barrier: 'Crunch!', barrel: 'Crunch!', arrow: 'Crunch!', machine: 'Crunch!',
   crate: 'Smash!', hay: 'Hay!?', tyre: 'Wrecked!', rock: 'Rock slide!', boulder: 'Flattened!', log: 'Timber!', spool: 'Flattened!', bale: 'Baled!', tumbleweed: 'Tumbleweed!',
-  rail: 'Wrecked!', gap: 'Bridge out!', landing: 'Wrecked!',
+  rail: 'Wrecked!', gap: 'Bridge out!', landing: 'Wrecked!', stuck: 'Wedged!',
 };
 
 function cruiseAt(z) {

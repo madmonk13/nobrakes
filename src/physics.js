@@ -62,6 +62,9 @@ export const CAR_HL = 2.15;
 const WALL = 0.8; // ending a step this far inside the ground means you hit a wall: a gap's far side
 const FALL_DEPTH = 2; // this far below a gap's rim there's no getting out
 const MAX_X = 60;
+const STUCK_SPEED = 2.5; // crawling slower than this while the engine's pulling means you're wedged...
+const STUCK_GRACE = 1.5; // ...and after this many seconds of it...
+const STUCK_DPS = 15; // ...the car takes this much damage a second, so a wedge can't go on for ever
 const KNOCK_TIME = 0.6; // after a head-on knock the wheel doesn't straighten itself for this long
 
 const tmpN = new THREE.Vector3();
@@ -72,7 +75,7 @@ const mtv = { nx: 0, nz: 0, depth: 0 };
 // { x, z, hw, hl, rot }: half width across, half length along, and rot the yaw (its forward
 // axis is (sin rot, cos rot), the same convention as the car's facing and three.js rotation.y).
 // On overlap fills mtv with the unit normal to push box a out along (away from b) and how far.
-function boxOverlap(a, b, out) {
+export function boxOverlap(a, b, out) {
   const dx = b.x - a.x, dz = b.z - a.z;
   let best = Infinity;
   for (const box of [a, b]) {
@@ -115,6 +118,7 @@ export class CarBody {
     this.slip = 0; // sideways speed, for tyre smoke and squeal
     this.surge = 0;
     this.knocked = 0;
+    this.stuck = 0; // seconds spent wedged
     this.lastPad = null;
     this.padHits = 0; // pads hit since the game last read it
     this.railHits = []; // { x, y, z, speed, side } guardrail scrapes since last read
@@ -258,6 +262,12 @@ export class CarBody {
       this.contact = false;
       this.airTime += dt;
     }
+
+    // Wedged against a pile-up with the engine pulling but going nowhere: there's no reversing, so
+    // after a while the car takes the damage the stalemate deserves
+    if (!this.crashed && this.contact && ctl.cruise > 8 && v.length() < STUCK_SPEED) this.stuck += dt;
+    else this.stuck = Math.max(0, this.stuck - dt * 2);
+    if (this.stuck > STUCK_GRACE) this.damage(STUCK_DPS * dt, 'stuck');
   }
 
   // Positive dyaw turns right.
@@ -309,14 +319,16 @@ export class CarBody {
     const headOn = Math.abs(m.nz) > 0.7; // hit its end rather than its side
     const e = headOn ? 0.15 : 0.25; // bounce
     let tx = rvx - vn * m.nx, tz = rvz - vn * m.nz; // sliding along the contact
-    const keep = headOn ? 0.5 : 0.75;
+    // a real impact scrubs speed off the slide; just leaning on it (the engine pushing you
+    // into a wreck) barely does, or you could never slide out from behind one
+    const keep = (headOn ? 0.5 : 0.75) + (headOn ? 0.5 : 0.25) * (1 - Math.min(1, closing / 3));
     tx *= keep;
     tz *= keep;
     v.x = ovx + tx - e * vn * m.nx;
     v.z = ovz + tz - e * vn * m.nz;
-    if (headOn) {
+    if (headOn && closing > HIT_FREE) {
       // glance off toward its nearer side so you can get round it
-      const side = Math.sign(m.nx || tx || Math.random() - 0.5);
+      const side = Math.sign(m.nx) || Math.sign(tx) || -Math.sign(this.pos.x) || 1;
       v.x += side * Math.min(4, 1 + closing * 0.15);
       if (!this.crashed) {
         this.facing = THREE.MathUtils.clamp(side * 0.35, -MAX_YAW, MAX_YAW); // nose knocked aside...
@@ -375,7 +387,15 @@ export class CarBody {
     if (!veh) return;
     const vel = this.vel.clone();
     const impact = this.pushOut(mtv, veh.drift || 0, veh.speed);
-    if (impact < HIT_FREE) return;
+    if (impact < HIT_FREE) {
+      // leaning on a wreck shoves it along rather than leaving you pinned against it
+      if (veh.wrecked) {
+        const m = VEHICLE_MASS[veh.type] ?? 1;
+        veh.speed += Math.max(0, vel.z - veh.speed) / m;
+        veh.drift = (veh.drift || 0) + (vel.x - this.vel.x) * 0.5 / m;
+      }
+      return;
+    }
     this.vehicleHits.push({ vehicle: veh, speed: impact, vel });
     terrain.traffic.bump(veh, vel);
     this.damage(CarBody.hitDamage(impact, VEHICLE_MASS[veh.type] ?? 1), 'traffic', veh.type);

@@ -29,6 +29,7 @@ const CRASH_LINES = {
   rail: () => 'You hit the guardrail.',
   gap: () => 'You drove off a collapsed bridge.',
   landing: () => 'You landed too hard.',
+  stuck: () => 'You got wedged in the wreckage.',
 };
 
 const PALETTE = [
@@ -239,7 +240,7 @@ export class UI {
     $('res-title').textContent = r.newBest ? 'New high score!' : r.conked ? 'Totaled!' : r.crash ? 'Wrecked!' : 'Run over';
     const why = CRASH_LINES[r.crash]?.(r.detail) || '';
     // conked out: the last hit was only the final straw
-    $('res-why').textContent = r.conked ? `${why} One knock too many, and the engine gave up.`.trim() : why;
+    $('res-why').textContent = r.conked && r.crash !== 'stuck' ? `${why} One knock too many, and the engine gave up.`.trim() : why;
     $('res-best-badge').classList.toggle('hidden', !r.newBest);
     $('res-score').textContent = fmt(r.total);
     $('res-dist').textContent = `${fmt(r.distance)} m`;
